@@ -15,7 +15,10 @@
 #define BUFSIZE 512
 #define BUFSIZETCP 1024
 
-
+typedef struct result{
+    int result;
+    bool error;
+} result_t;
 
 /// @brief Check if imput arguments are simmilar to the format "-h <host> -p <port number> -m <mode>"
 /// @param argc 
@@ -58,32 +61,81 @@ bool checkArgs(int argc, char *argv[]){
     
 }
 
+
+
 /// @brief check if input string has format
 /// @param str
 /// @return true if string has correct format
 bool checkFormat(char *str){
-
     regex_t regex;
-    char regex_pattern[] = "^\\( [\\+\\-\\\\\\*] \\d+( \\d+)+\\)$";
+    //negative number is not allowed, NEED TO FIX
+    char regex_pattern[] = "^\\(\\+|\\-|\\*|/\\s[0-9]+(\\s[0-9]+)+\\)$";
     int x = regcomp(&regex, regex_pattern, REG_EXTENDED);
     if (x != 0) {
-    char error_message[100];
-    regerror(x, &regex, error_message, sizeof(error_message));
-    fprintf(stderr, "Error compiling regex: %s\n", error_message);
-    exit(1);
+        char error_message[100];
+        regerror(x, &regex, error_message, sizeof(error_message));
+        fprintf(stderr, "Error compiling regex: %s\n", error_message);
+        return false;
     }
-    x = regexec(&regex, str, 0, NULL, 0);
+    regmatch_t match;
+    x = regexec(&regex, str, 1, &match, 0);
+    regfree(&regex);
     if(x == 0){
         return true;
     }
     else{
         return false;
     }
-
-
-    
 }
 
+
+result_t resolve_command(char *str){
+    int result = 0;
+    char *token;
+    char *rest = str;
+    char *operation;
+    int number;
+    int i = 0;
+    bool error = false;
+    token = strtok(rest, " ");
+    while(token != NULL){
+        if(i == 0){
+            operation = token;
+        }
+        else if(i == 1){
+            result = atoi(token);
+        }
+        else{
+            number = atoi(token);
+            switch(operation[1]){
+                case '+':
+                    result += number;
+                    break;
+                case '-':
+                    result -= number;
+                    break;
+                case '*':
+                    result *= number;
+                    break;
+                case '/':
+                    if(number == 0){
+                        error = true;
+                        break;
+                    }
+                    result /= number;
+                    break;
+                default:
+                    error = true;
+            }
+        }
+        i++;
+        token = strtok(NULL, " ");
+    }
+    result_t result_struct;
+    result_struct.result = result;
+    result_struct.error = error;
+    return result_struct;
+}
 
 void UDP_server( char *argv[] ){
     char buf[BUFSIZE];
@@ -94,8 +146,13 @@ void UDP_server( char *argv[] ){
     const char * hostaddrp;
     struct hostent *hostp;
 
+    char *adress;
+    adress = argv[2];
+
      
     port_number = atoi(argv[4]);
+    adress = argv[2];
+
       
     /* Vytvoreni soketu */
 	if ((server_socket = socket(AF_INET, SOCK_DGRAM, 0)) <= 0)
@@ -111,7 +168,7 @@ void UDP_server( char *argv[] ){
     /* adresa serveru, potrebuje pro prirazeni pozadovaneho portu */
     bzero((char *) &server_address, sizeof(server_address));
     server_address.sin_family = AF_INET;
-    server_address.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_address.sin_addr.s_addr = inet_addr(adress);
     server_address.sin_port = htons((unsigned short)port_number);
 	
     if (bind(server_socket, (struct sockaddr *) &server_address, sizeof(server_address)) < 0) 
@@ -134,10 +191,6 @@ void UDP_server( char *argv[] ){
         hostp = gethostbyaddr((const char *)&client_address.sin_addr.s_addr, 
 			  sizeof(client_address.sin_addr.s_addr), AF_INET);
               
-        hostaddrp = inet_ntoa(client_address.sin_addr);
-        printf("Message (%lu) from %s:  %s..\n", strlen(buf+2)+2, hostaddrp, buf+2);
-        printf("Message (%lu) from %s:  %s..\n", strlen(buf), hostaddrp, buf+2);
-        printf("Message (%d) from %s:  %s..\n", buf[1], hostaddrp, buf+2);
         //print buffer in hexademical format
         for(int i = 0; i < buf[1]; i++){
             printf("%02x, %c.\n", buf[i], buf[i]);
@@ -151,30 +204,42 @@ void UDP_server( char *argv[] ){
 
         if(checkFormat(hepl_buf)){
             buf[1] = 0x00;
+            result_t result_struct = resolve_command(hepl_buf);
+            if(result_struct.error){
+                buf[1] = 0x01;
+            }
+            else{
+                sprintf(buf+3, "%d", result_struct.result);
+                buf[2] = strlen(buf+3)+3;
+            }
         }
         else{
             buf[1] = 0x01;
+            sprintf(buf+3, "Invalid expression: %s", hepl_buf);
         }
+
+        buf[2] = strlen(buf+3)+3;
         
-        printf("out data: %s\n", buf+2);
+        printf("\n \nout data: %s\n", buf+3);
         for(int i = 0; i < buf[2]; i++){
             printf("%02x, %c.\n", buf[i], buf[i]);
         }
-    
+        printf("\n \n");
     
         /* odeslani zpravy zpet klientovi  */        
-        bytestx = sendto(server_socket, buf, strlen(hepl_buf)+3, 0, (struct sockaddr *) &client_address, clientlen);
+        bytestx = sendto(server_socket, buf, buf[2], 0, (struct sockaddr *) &client_address, clientlen);
         if (bytestx < 0) 
             perror("ERROR: sendto:");
     }
 
 }
 
+
 int main(int argc, char *argv[]){
     if(!checkArgs(argc, argv)){
         return 1;
     }
-
+    //test();
     UDP_server(argv);
     return 0;
 
