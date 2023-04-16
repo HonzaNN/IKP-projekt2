@@ -71,7 +71,7 @@ bool checkArgs(int argc, char *argv[]){
 bool checkFormat(char *str){
     regex_t regex;
     //negative number is not allowed, NEED TO FIX
-    char regex_pattern[] = "^\\(\\+|\\-|\\*|/\\s[0-9]+(\\s[0-9]+)+\\)$";
+    char regex_pattern[] = "^\\(\\+|\\-|\\*|/\\s-?[0-9]+(\\s-?[0-9]+)+\\)$";
     int x = regcomp(&regex, regex_pattern, REG_EXTENDED);
     if (x != 0) {
         char error_message[100];
