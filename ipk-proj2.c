@@ -189,9 +189,6 @@ void UDP_server( char *argv[] ){
         bytesrx = recvfrom(server_socket, buf, BUFSIZE, 0, (struct sockaddr *) &client_address, &clientlen);
         if (bytesrx < 0) 
             perror("ERROR: recvfrom:");
-    
-        hostp = gethostbyaddr((const char *)&client_address.sin_addr.s_addr, 
-			  sizeof(client_address.sin_addr.s_addr), AF_INET);
               
         
 
